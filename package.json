@@ -8,7 +8,7 @@
     "start": "npx serve . --cors",
     "dev": "npx serve . --cors",
     "install-deps": "npm install",
-    "build": "echo 'No build process needed for vanilla JS'"
+    "build": "node build.js"
   },
   "dependencies": {},
   "devDependencies": {
@@ -27,6 +27,6 @@
   "author": "Viscera Team",
   "license": "MIT",
   "engines": {
-    "node": ">=18.0.0"
+    "node": "22.x"
   }
 }
