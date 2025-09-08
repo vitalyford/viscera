@@ -2,6 +2,8 @@
 
 An AI-powered medical visualization tool that helps patients understand surgeries, diagnoses, and treatments using Google's Gemini 2.5 Flash Image Generation model.
 
+> This is a proof of concept quickly put together for a hackathon, breaking all the rules of good engineering principles. Please don't use this code in production, I'll clean it up and refactor later if this is needed.
+
 ## Problem Solved
 
 Patients often don't understand their medical procedures, leading to:
