@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Viscera - Medical Visualization for Patients</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="logo">
+                <h1>Viscera</h1>
+                <p>Understanding Your Medical Journey</p>
+            </div>
+            <div class="api-key-section">
+                <div class="api-key-container">
+                    <label for="api-key-input" class="api-key-label">
+                        <span class="key-icon">🔑</span>
+                        Gemini API Key
+                    </label>
+                    <div class="api-key-input-wrapper">
+                        <input 
+                            type="password" 
+                            id="api-key-input" 
+                            placeholder="Enter your Gemini API key..."
+                            class="api-key-input"
+                            autocomplete="off"
+                            spellcheck="false"
+                        >
+                        <button type="button" class="toggle-visibility" id="toggle-api-key" title="Toggle visibility">
+                            <span class="eye-icon">👁️</span>
+                        </button>
+                    </div>
+                    <small class="api-key-help">
+                        Your API key is only stored in memory and never saved. 
+                        <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">Get your key here</a>
+                    </small>
+                </div>
+            </div>
+        </header>
+
+        <main class="main">
+            <div class="mode-selector">
+                <button class="mode-btn active" data-mode="learn">
+                    Learn About Procedures
+                </button>
+                <button class="mode-btn" data-mode="personal">
+                    Personal Medical Imaging
+                </button>
+            </div>
+
+            <!-- Learn Mode -->
+            <div class="mode-content" id="learn-mode">
+                <div class="procedure-grid">
+                    <button class="procedure-card" data-procedure="knee-replacement">
+                        <div class="card-icon">🦴</div>
+                        <h3>Knee Replacement</h3>
+                    </button>
+                    <button class="procedure-card" data-procedure="heart-surgery">
+                        <div class="card-icon">❤️</div>
+                        <h3>Heart Surgery</h3>
+                    </button>
+                    <button class="procedure-card" data-procedure="cataract-surgery">
+                        <div class="card-icon">👁️</div>
+                        <h3>Cataract Surgery</h3>
+                    </button>
+                    <button class="procedure-card" data-procedure="appendectomy">
+                        <div class="card-icon">🫁</div>
+                        <h3>Appendectomy</h3>
+                    </button>
+                    <button class="procedure-card" data-procedure="dental-implant">
+                        <div class="card-icon">🦷</div>
+                        <h3>Dental Implant</h3>
+                    </button>
+                    <button class="procedure-card" data-procedure="gallbladder-surgery">
+                        <div class="card-icon">🫀</div>
+                        <h3>Gallbladder Surgery</h3>
+                    </button>
+                    <button class="procedure-card" data-procedure="hip-replacement">
+                        <div class="card-icon">🦴</div>
+                        <h3>Hip Replacement</h3>
+                    </button>
+                    <button class="procedure-card custom-card" data-procedure="custom">
+                        <div class="card-icon">✨</div>
+                        <h3>Your Custom Procedure</h3>
+                        <small>Describe any medical procedure</small>
+                    </button>
+                </div>
+
+                <div class="custom-input" id="custom-procedure" style="display: none;">
+                    <div class="custom-input-container">
+                        <label for="procedure-description" class="custom-label">
+                            Tell us about your procedure
+                        </label>
+                        <textarea 
+                            id="procedure-description" 
+                            placeholder="Describe the medical procedure you want to learn about... For example: 'rotator cuff repair surgery', 'thyroid biopsy', or 'spinal fusion procedure'"
+                            rows="4"
+                        ></textarea>
+                        <div class="input-footer">
+                            <small class="help-text">Be as specific as possible for the best visualization</small>
+                            <div class="char-counter">
+                                <span id="char-count">0</span>/500
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Personal Mode -->
+            <div class="mode-content" id="personal-mode" style="display: none;">
+                <div class="upload-section">
+                    <div class="upload-area" id="upload-area">
+                        <input type="file" id="file-input" multiple accept="image/*" hidden>
+                        <div class="upload-content">
+                            <div class="upload-icon">📁</div>
+                            <p>Click to upload medical images or drag & drop</p>
+                            <small>Supports multiple images (X-rays, MRIs, CT scans)</small>
+                        </div>
+                    </div>
+                    <div class="uploaded-images" id="uploaded-images"></div>
+                </div>
+
+                <div class="personal-description">
+                    <textarea 
+                        id="personal-query" 
+                        placeholder="What would you like to understand about your condition or treatment? e.g., 'Show me what my knee will look like after surgery' or 'Explain what this X-ray shows'"
+                        rows="3"
+                    ></textarea>
+                </div>
+            </div>
+
+            <!-- Generation Controls -->
+            <div class="generation-controls">
+                <div class="sequence-control">
+                    <label for="sequence-count">Number of visualization steps:</label>
+                    <select id="sequence-count">
+                        <option value="1">1 image</option>
+                        <option value="3" selected>3 images</option>
+                        <option value="5">5 images</option>
+                        <option value="7">7 images (detailed)</option>
+                    </select>
+                </div>
+                <button class="generate-btn" id="generate-btn">
+                    Generate Medical Visualization
+                </button>
+            </div>
+
+            <!-- Results -->
+            <div class="results" id="results" style="display: none;">
+                <h3>Your Medical Visualization</h3>
+                <div class="image-sequence" id="image-sequence"></div>
+                <div class="disclaimer">
+                    <p><strong>Medical Disclaimer:</strong> These visualizations are for educational purposes only and should not replace professional medical advice. Always consult with your healthcare provider.</p>
+                </div>
+            </div>
+
+            <!-- Loading -->
+            <div class="loading" id="loading" style="display: none;">
+                <div class="spinner"></div>
+                <p>Generating your medical visualization...</p>
+                <p class="loading-status" id="loading-status">Preparing visualizations...</p>
+                <div class="progress-bar">
+                    <div class="progress" id="progress"></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script type="module" src="script.js"></script>
+</body>
+</html>

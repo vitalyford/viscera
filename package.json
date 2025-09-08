@@ -1,0 +1,32 @@
+{
+  "name": "viscera-medical-visualization",
+  "version": "1.0.0",
+  "description": "AI-powered medical visualization for patient education using Gemini 2.5 Flash",
+  "main": "index.html",
+  "type": "module",
+  "scripts": {
+    "start": "npx serve . --cors",
+    "dev": "npx serve . --cors",
+    "install-deps": "npm install",
+    "build": "echo 'No build process needed for vanilla JS'"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "serve": "^14.2.1"
+  },
+  "keywords": [
+    "medical",
+    "visualization",
+    "ai",
+    "gemini",
+    "healthcare",
+    "patient-education",
+    "medical-imaging",
+    "nano-banana"
+  ],
+  "author": "Viscera Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
