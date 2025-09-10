@@ -5,22 +5,22 @@ class MedicalVisualizationApp {
         this.selectedProcedure = null;
         this.uploadedFiles = [];
         this.isGenerating = false;
-        
+
         // Cache for anatomical descriptions and image descriptions to avoid repeated API calls
         this.anatomicalDescriptions = new Map();
         this.imageDescriptions = new Map();
-        
+
         // Cache for enhanced prompts to avoid re-processing
         this.enhancedPrompts = new Map();
         this.imageAnalysisCache = new Map();
-        
+
         // Pre-fetched anatomical terms for better performance
         this.preFetchedDescriptions = new Map();
-        
+
         // Tooltip element
         this.tooltip = null;
         this.tooltipTimeout = null;
-        
+
         this.init();
     }
 
@@ -35,7 +35,7 @@ class MedicalVisualizationApp {
     setupApiKeyToggle() {
         const toggleBtn = document.getElementById('toggle-api-key');
         const apiKeyInput = document.getElementById('api-key-input');
-        
+
         if (toggleBtn && apiKeyInput) {
             toggleBtn.addEventListener('click', () => {
                 const isPassword = apiKeyInput.type === 'password';
@@ -58,14 +58,14 @@ class MedicalVisualizationApp {
             document.getElementById('api-key-input')?.focus();
             return false;
         }
-        
+
         // Basic API key format validation for Google AI API keys
         if (!apiKey.startsWith('AIza') || apiKey.length < 30) {
             this.showError('Please enter a valid Gemini API key. It should start with "AIza" and be at least 30 characters long.');
             document.getElementById('api-key-input')?.focus();
             return false;
         }
-        
+
         return true;
     }
 
@@ -80,17 +80,49 @@ class MedicalVisualizationApp {
         const errorDiv = document.createElement('div');
         errorDiv.className = 'error-message';
         errorDiv.textContent = message;
-        
+
         const apiKeySection = document.querySelector('.api-key-section');
         if (apiKeySection) {
             apiKeySection.appendChild(errorDiv);
-            
+
             // Auto-remove after 5 seconds
             setTimeout(() => {
                 if (errorDiv.parentNode) {
                     errorDiv.remove();
                 }
             }, 5000);
+        }
+    }
+
+    showErrorModal(message) {
+        const modal = document.getElementById('error-modal');
+        const messageElement = document.getElementById('error-message');
+        const closeBtn = document.getElementById('error-modal-close');
+
+        if (modal && messageElement) {
+            messageElement.textContent = message;
+            modal.style.display = 'block';
+
+            // Close modal when clicking the close button
+            const closeModal = () => {
+                modal.style.display = 'none';
+            };
+
+            closeBtn.onclick = closeModal;
+
+            // Close modal when clicking outside
+            modal.onclick = (event) => {
+                if (event.target === modal) {
+                    closeModal();
+                }
+            };
+
+            // Close modal on Escape key
+            document.onkeydown = (event) => {
+                if (event.key === 'Escape') {
+                    closeModal();
+                }
+            };
         }
     }
 
@@ -164,7 +196,7 @@ class MedicalVisualizationApp {
 
     switchMode(mode) {
         this.currentMode = mode;
-        
+
         // Update UI
         document.querySelectorAll('.mode-btn').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.mode === mode);
@@ -175,14 +207,14 @@ class MedicalVisualizationApp {
         });
 
         document.getElementById(`${mode}-mode`).style.display = 'block';
-        
+
         // Reset results when switching modes
         document.getElementById('results').style.display = 'none';
     }
 
     selectProcedure(procedure) {
         this.selectedProcedure = procedure;
-        
+
         // Update UI
         document.querySelectorAll('.procedure-card').forEach(card => {
             card.classList.toggle('selected', card.dataset.procedure === procedure);
@@ -208,12 +240,12 @@ class MedicalVisualizationApp {
         const counter = document.querySelector('.char-counter');
         const currentLength = textarea.value.length;
         const maxLength = 500;
-        
+
         charCount.textContent = currentLength;
-        
+
         // Update counter styling based on character count
         counter.classList.remove('warning', 'danger');
-        
+
         if (currentLength > maxLength * 0.8) {
             counter.classList.add('warning');
         }
@@ -275,42 +307,42 @@ class MedicalVisualizationApp {
 
         this.isGenerating = true;
         this.showLoading();
-        
+
         // Clear any existing description caches for fresh generation
         this.clearDescriptionCaches();
 
         try {
             const sequenceCount = parseInt(document.getElementById('sequence-count').value);
             const prompts = await this.buildPrompts(sequenceCount);
-            
+
             // Step 1: Generate all base images in parallel
             this.updateProgressWithStatus(10, `Generating ${prompts.length} visualizations...`);
-            const imageGenerationPromises = prompts.map((prompt, index) => 
+            const imageGenerationPromises = prompts.map((prompt, index) =>
                 this.generateTextFreeImageWithPrompt(prompt, index, prompts.length)
             );
-            
+
             const baseImages = await Promise.all(imageGenerationPromises);
             console.log(`Generated ${baseImages.filter(img => img).length} base images successfully`);
-            
+
             // Step 2: Analyze all images in parallel for precise anatomical positioning
             this.updateProgressWithStatus(40, 'Performing detailed anatomical analysis for precise label positioning...');
-            const analysisPromises = baseImages.map((imageData, index) => 
+            const analysisPromises = baseImages.map((imageData, index) =>
                 imageData ? this.analyzeLabelPositions(imageData.data, prompts[index]) : null
             );
-            
+
             const analyses = await Promise.all(analysisPromises);
             console.log(`Completed precise anatomical analysis for ${analyses.filter(a => a).length} images`);
-            
+
             // Step 3: Add accurately positioned labels to all images in parallel
             this.updateProgressWithStatus(70, 'Adding medically accurate labels to all visualizations...');
-            const overlayPromises = baseImages.map((imageData, index) => 
-                imageData && analyses[index] ? 
-                    this.addTextOverlays(imageData.data, analyses[index]) : 
+            const overlayPromises = baseImages.map((imageData, index) =>
+                imageData && analyses[index] ?
+                    this.addTextOverlays(imageData.data, analyses[index]) :
                     Promise.resolve(imageData?.data)
             );
-            
+
             const finalImages = await Promise.all(overlayPromises);
-            
+
             // Step 4: Package results
             const images = [];
             finalImages.forEach((imageData, index) => {
@@ -333,7 +365,12 @@ class MedicalVisualizationApp {
             }
         } catch (error) {
             console.error('Generation error:', error);
-            alert('Error generating visualization. Please check your inputs and try again.');
+            if (error.toString().includes('429')) {
+                this.showErrorModal('Your quota rate limit exceeded. Please wait a day or check with aistudio before trying again.');
+            }
+            else {
+                this.showErrorModal('Error generating visualization. Please check your inputs and try again.');
+            }
         } finally {
             this.isGenerating = false;
             this.hideLoading();
@@ -343,20 +380,20 @@ class MedicalVisualizationApp {
     validateInputs() {
         if (this.currentMode === 'learn') {
             if (!this.selectedProcedure) {
-                alert('Please select a medical procedure to visualize.');
+                this.showErrorModal('Please select a medical procedure to visualize.');
                 return false;
             }
             if (this.selectedProcedure === 'custom') {
                 const description = document.getElementById('procedure-description').value.trim();
                 if (!description) {
-                    alert('Please describe the custom procedure you want to visualize.');
+                    this.showErrorModal('Please describe the custom procedure you want to visualize.');
                     return false;
                 }
             }
         } else {
             const query = document.getElementById('personal-query').value.trim();
             if (!query) {
-                alert('Please describe what you want to understand about your medical condition.');
+                this.showErrorModal('Please describe what you want to understand about your medical condition.');
                 return false;
             }
         }
@@ -428,9 +465,9 @@ class MedicalVisualizationApp {
         if (this.selectedProcedure === 'custom' && basePrompt.trim()) {
             enhancedBasePrompt = await this.enhancePromptWithMedicalTerms(basePrompt, 'educational');
         }
-        
+
         const stepDescriptions = this.getEducationalStepDescriptions(step, totalSteps);
-        
+
         return `Create a clear, detailed medical illustration showing ${enhancedBasePrompt} - ${stepDescriptions}. 
         Make it photorealistic but appropriate for patient education, showing anatomical details clearly. 
         Use cross-sectional or cutaway views when helpful. Focus on visual clarity of anatomical structures. 
@@ -440,7 +477,7 @@ class MedicalVisualizationApp {
 
     getEducationalStepDescriptions(step, totalSteps) {
         const percentage = ((step - 1) / Math.max(1, totalSteps - 1)) * 100;
-        
+
         if (totalSteps === 1) {
             return 'complete procedure overview';
         } else if (totalSteps === 3) {
@@ -467,10 +504,10 @@ class MedicalVisualizationApp {
 
     async buildPersonalPrompt(basePrompt, step, totalSteps) {
         const prompt = [];
-        
+
         // First, analyze uploaded images to understand what they show
         const imageAnalysis = await this.analyzeUploadedImages();
-        
+
         // Enhance the user's prompt based on image analysis and medical terminology
         let enhancedBasePrompt = basePrompt;
         if (basePrompt.trim()) {
@@ -480,13 +517,13 @@ class MedicalVisualizationApp {
                 enhancedBasePrompt = await this.enhancePromptWithMedicalTerms(basePrompt, 'clinical');
             }
         }
-        
+
         const stepDesc = this.getPersonalStepDescription(step, totalSteps);
-        prompt.push({ 
+        prompt.push({
             text: `Based on the provided medical images, create a visualization that helps explain: ${enhancedBasePrompt}. 
             Focus on ${stepDesc}. Create a clear, patient-friendly visualization that helps explain the medical situation. 
             Make it educational and reassuring while being medically accurate. Step ${step} of ${totalSteps}. 
-            Important: Generate the image without any text or labels - they will be added separately for clarity.` 
+            Important: Generate the image without any text or labels - they will be added separately for clarity.`
         });
 
         // Add uploaded images
@@ -505,7 +542,7 @@ class MedicalVisualizationApp {
 
     getPersonalStepDescription(step, totalSteps) {
         const percentage = ((step - 1) / Math.max(1, totalSteps - 1)) * 100;
-        
+
         if (totalSteps === 1) {
             return 'the current condition and what it means';
         } else if (percentage <= 33) {
@@ -574,11 +611,11 @@ Enhanced prompt:`;
 
             const data = await response.json();
             const enhancedPrompt = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-            
+
             if (enhancedPrompt) {
                 console.log('Original prompt:', userPrompt);
                 console.log('Enhanced prompt:', enhancedPrompt);
-                
+
                 // Cache the result
                 this.enhancedPrompts.set(cacheKey, enhancedPrompt);
                 return enhancedPrompt;
@@ -600,7 +637,7 @@ Enhanced prompt:`;
         // Create cache key based on file info
         const fileInfo = this.uploadedFiles.map(f => `${f.name}-${f.size}-${f.lastModified}`).join('|');
         const cacheKey = `analysis-${fileInfo}`;
-        
+
         if (this.imageAnalysisCache.has(cacheKey)) {
             return this.imageAnalysisCache.get(cacheKey);
         }
@@ -618,7 +655,7 @@ Be specific and use proper medical terminology. This analysis will be used to en
 Medical image analysis:`;
 
             const prompt = [{ text: analysisPrompt }];
-            
+
             // Add all uploaded images to the analysis
             for (const file of this.uploadedFiles) {
                 const base64Data = await this.fileToBase64(file);
@@ -652,7 +689,7 @@ Medical image analysis:`;
 
             const data = await response.json();
             const analysis = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-            
+
             if (analysis) {
                 console.log('Image analysis:', analysis);
                 // Cache the result
@@ -714,7 +751,7 @@ Enhanced prompt for medical visualization:`;
 
             const data = await response.json();
             const enhancedPrompt = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-            
+
             if (enhancedPrompt) {
                 console.log('Enhanced personal prompt:', enhancedPrompt);
                 // Cache the result
@@ -733,7 +770,7 @@ Enhanced prompt for medical visualization:`;
     async generateSingleImage(prompt) {
         try {
             const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent?key=${this.getApiKey()}`;
-            
+
             let requestBody;
             if (typeof prompt === 'string') {
                 // Text-only prompt
@@ -764,7 +801,7 @@ Enhanced prompt for medical visualization:`;
             }
 
             const data = await response.json();
-            
+
             // Look for inline data (images) in the response
             if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) {
                 for (const part of data.candidates[0].content.parts) {
@@ -773,7 +810,7 @@ Enhanced prompt for medical visualization:`;
                     }
                 }
             }
-            
+
             throw new Error('No image data found in response');
         } catch (error) {
             console.error('Error generating image:', error);
@@ -785,13 +822,15 @@ Enhanced prompt for medical visualization:`;
         try {
             const textFreePrompt = this.createTextFreePrompt(prompt);
             const imageData = await this.generateSingleImage(textFreePrompt);
+
             console.log(`Base image ${index + 1}/${total} generated successfully`);
             return { data: imageData, index: index };
         } catch (error) {
             console.error(`Error generating base image ${index + 1}:`, error);
-            return null;
+            throw error;
         }
     }
+
 
     createTextFreePrompt(originalPrompt) {
         let baseContent = '';
@@ -836,15 +875,15 @@ The image must be completely clean of text because labels will be added programm
         try {
             // Step 1: Identify anatomical structures with precise medical analysis
             const structureAnalysis = await this.identifyAnatomicalStructures(imageData, originalPrompt);
-            
+
             if (!structureAnalysis || structureAnalysis.labels.length === 0) {
                 console.warn('No anatomical structures identified');
                 return { labels: [], description: 'No anatomical structures identified' };
             }
-            
+
             // Step 2: Refine coordinates for medical accuracy
             const refinedAnalysis = await this.refineAnatomicalCoordinates(imageData, structureAnalysis, originalPrompt);
-            
+
             return refinedAnalysis;
         } catch (error) {
             console.warn('Error during label analysis:', error);
@@ -855,9 +894,9 @@ The image must be completely clean of text because labels will be added programm
     async identifyAnatomicalStructures(imageData, originalPrompt) {
         try {
             const identificationPrompt = this.createAnatomicalIdentificationPrompt(originalPrompt);
-            
+
             const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${this.getApiKey()}`;
-            
+
             const requestBody = {
                 contents: [{
                     parts: [
@@ -893,14 +932,14 @@ The image must be completely clean of text because labels will be added programm
             }
 
             const data = await response.json();
-            
+
             if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) {
                 const analysisText = data.candidates[0].content.parts[0].text;
                 const result = this.parseLabelAnalysis(analysisText);
                 console.log(`Identified ${result.labels.length} anatomical structures`);
                 return result;
             }
-            
+
             return { labels: [], description: 'No structure data returned' };
         } catch (error) {
             if (error.name === 'AbortError') {
@@ -915,9 +954,9 @@ The image must be completely clean of text because labels will be added programm
     async refineAnatomicalCoordinates(imageData, initialAnalysis, originalPrompt) {
         try {
             const refinementPrompt = this.createCoordinateRefinementPrompt(originalPrompt, initialAnalysis);
-            
+
             const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${this.getApiKey()}`;
-            
+
             const requestBody = {
                 contents: [{
                     parts: [
@@ -947,15 +986,15 @@ The image must be completely clean of text because labels will be added programm
             }
 
             const data = await response.json();
-            
+
             if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) {
                 const refinedText = data.candidates[0].content.parts[0].text;
                 const refinedAnalysis = this.parseLabelAnalysis(refinedText);
-                
+
                 // If refinement produced valid results, use them; otherwise use initial analysis
                 return refinedAnalysis.labels.length > 0 ? refinedAnalysis : initialAnalysis;
             }
-            
+
             return initialAnalysis;
         } catch (error) {
             console.warn('Error during coordinate refinement:', error);
@@ -1054,7 +1093,7 @@ DESCRIPTION: Lateral neck anatomy showing vascular and muscular structures`;
             baseContent = textParts.map(part => part.text).join(' ');
         }
 
-        const structuresList = initialAnalysis.labels.map(label => 
+        const structuresList = initialAnalysis.labels.map(label =>
             `${label.text} at ${label.x}%,${label.y}%`
         ).join('\n');
 
@@ -1103,10 +1142,10 @@ DESCRIPTION: Refined neck anatomy with precise vascular structure locations`;
 
             let inLabelsSection = false;
             let sectionType = '';
-            
+
             for (const line of lines) {
                 const trimmedLine = line.trim();
-                
+
                 // Check for section headers
                 if (trimmedLine.startsWith('LABELS:') || trimmedLine.startsWith('STRUCTURES:') || trimmedLine.startsWith('REFINED_LABELS:')) {
                     inLabelsSection = true;
@@ -1117,22 +1156,22 @@ DESCRIPTION: Refined neck anatomy with precise vascular structure locations`;
                     analysis.description = trimmedLine.replace('DESCRIPTION:', '').trim();
                     continue;
                 }
-                
+
                 if (inLabelsSection && trimmedLine.includes('at position')) {
                     // Handle different formats:
                     // Format 1: "Structure: Description at position X%,Y%"
                     // Format 2: "Structure Name: Detailed description at position X%,Y%"
-                    
+
                     const positionMatch = trimmedLine.match(/at position\s+(\d+)%,(\d+)%/);
                     if (positionMatch) {
                         const beforePosition = trimmedLine.substring(0, trimmedLine.indexOf('at position')).trim();
-                        
+
                         // Split on the first colon to separate structure name from description
                         const colonIndex = beforePosition.indexOf(':');
                         if (colonIndex > -1) {
                             const structureName = beforePosition.substring(0, colonIndex).trim();
                             const description = beforePosition.substring(colonIndex + 1).trim();
-                            
+
                             analysis.labels.push({
                                 structure: structureName,
                                 text: structureName, // Use structure name as the label text
@@ -1144,7 +1183,7 @@ DESCRIPTION: Refined neck anatomy with precise vascular structure locations`;
                             // Fallback: try to extract structure name from the whole line
                             const words = beforePosition.split(/\s+/);
                             const structureName = words.slice(0, Math.min(3, words.length)).join(' ');
-                            
+
                             analysis.labels.push({
                                 structure: structureName,
                                 text: structureName,
@@ -1159,7 +1198,7 @@ DESCRIPTION: Refined neck anatomy with precise vascular structure locations`;
 
             // Log parsing results for debugging
             console.log(`Parsed ${analysis.labels.length} labels from ${sectionType} section`);
-            
+
             return analysis;
         } catch (error) {
             console.warn('Error parsing label analysis:', error);
@@ -1173,19 +1212,19 @@ DESCRIPTION: Refined neck anatomy with precise vascular structure locations`;
             img.onload = () => {
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
-                
+
                 // Set canvas size to match image
                 canvas.width = img.width;
                 canvas.height = img.height;
-                
+
                 // Draw the base image
                 ctx.drawImage(img, 0, 0);
-                
+
                 // Add modern text overlays with lines
                 if (labelAnalysis && labelAnalysis.labels) {
                     this.addModernLabels(ctx, labelAnalysis.labels, canvas.width, canvas.height);
                 }
-                
+
                 // Convert canvas to base64
                 const finalImageData = canvas.toDataURL('image/png').split(',')[1];
                 resolve(finalImageData);
@@ -1197,7 +1236,7 @@ DESCRIPTION: Refined neck anatomy with precise vascular structure locations`;
     addModernLabels(ctx, labels, canvasWidth, canvasHeight) {
         // Add roundRect polyfill if not available
         if (!ctx.roundRect) {
-            ctx.roundRect = function(x, y, width, height, radius) {
+            ctx.roundRect = function (x, y, width, height, radius) {
                 this.beginPath();
                 this.moveTo(x + radius, y);
                 this.lineTo(x + width - radius, y);
@@ -1211,7 +1250,7 @@ DESCRIPTION: Refined neck anatomy with precise vascular structure locations`;
                 this.closePath();
             };
         }
-        
+
         // Modern styling configuration
         const config = {
             fontSize: Math.max(18, Math.min(24, canvasWidth / 40)), // Responsive font size
@@ -1236,18 +1275,18 @@ DESCRIPTION: Refined neck anatomy with precise vascular structure locations`;
         labels.forEach((label, index) => {
             const pointX = (label.x / 100) * canvasWidth;
             const pointY = (label.y / 100) * canvasHeight;
-            
+
             // Measure text to determine label box size
             const textMetrics = ctx.measureText(label.text);
             const textWidth = textMetrics.width;
             const textHeight = config.fontSize;
-            
+
             // Calculate optimal label position without overlaps
             const labelPosition = this.calculateOptimalLabelPositionWithoutOverlap(
-                pointX, pointY, textWidth, textHeight, config.padding, 
+                pointX, pointY, textWidth, textHeight, config.padding,
                 canvasWidth, canvasHeight, index, placedLabels
             );
-            
+
             // Add this label to the placed labels list
             placedLabels.push({
                 x: labelPosition.boxX,
@@ -1255,17 +1294,17 @@ DESCRIPTION: Refined neck anatomy with precise vascular structure locations`;
                 width: labelPosition.boxWidth,
                 height: labelPosition.boxHeight
             });
-            
+
             // Draw connecting line with modern style
             this.drawModernConnectorLine(ctx, pointX, pointY, labelPosition, config);
-            
+
             // Draw modern label background
             this.drawModernLabelBackground(ctx, labelPosition, textWidth, textHeight, config);
-            
+
             // Draw the text
             ctx.fillStyle = config.textColor;
             ctx.fillText(label.text, labelPosition.textX, labelPosition.textY);
-            
+
             // Draw point indicator
             this.drawModernPoint(ctx, pointX, pointY, config);
         });
@@ -1276,25 +1315,25 @@ DESCRIPTION: Refined neck anatomy with precise vascular structure locations`;
         const boxHeight = textHeight + (padding * 2);
         const offset = 40; // Distance from point to label
         const minSeparation = 10; // Minimum distance between labels
-        
+
         // Try different positions in order of preference with multiple offsets
         const basePositions = [
             { x: pointX + offset, y: pointY - offset, anchor: 'top-right' },
             { x: pointX - offset - boxWidth, y: pointY - offset, anchor: 'top-left' },
             { x: pointX + offset, y: pointY + offset, anchor: 'bottom-right' },
             { x: pointX - offset - boxWidth, y: pointY + offset, anchor: 'bottom-left' },
-            { x: pointX - boxWidth/2, y: pointY - offset - boxHeight, anchor: 'top' },
-            { x: pointX - boxWidth/2, y: pointY + offset, anchor: 'bottom' }
+            { x: pointX - boxWidth / 2, y: pointY - offset - boxHeight, anchor: 'top' },
+            { x: pointX - boxWidth / 2, y: pointY + offset, anchor: 'bottom' }
         ];
-        
+
         // Try multiple radial distances for each position
         const distances = [offset, offset + 30, offset + 60, offset + 90];
-        
+
         for (let distance of distances) {
             for (let pos of basePositions) {
                 // Calculate position with current distance
                 let adjustedX, adjustedY;
-                switch(pos.anchor) {
+                switch (pos.anchor) {
                     case 'top-right':
                         adjustedX = pointX + distance;
                         adjustedY = pointY - distance;
@@ -1312,38 +1351,38 @@ DESCRIPTION: Refined neck anatomy with precise vascular structure locations`;
                         adjustedY = pointY + distance;
                         break;
                     case 'top':
-                        adjustedX = pointX - boxWidth/2;
+                        adjustedX = pointX - boxWidth / 2;
                         adjustedY = pointY - distance - boxHeight;
                         break;
                     case 'bottom':
-                        adjustedX = pointX - boxWidth/2;
+                        adjustedX = pointX - boxWidth / 2;
                         adjustedY = pointY + distance;
                         break;
                     default:
                         adjustedX = pos.x;
                         adjustedY = pos.y;
                 }
-                
+
                 // Check if this position fits within canvas bounds
-                if (adjustedX >= 0 && adjustedY >= 0 && 
-                    adjustedX + boxWidth <= canvasWidth && 
+                if (adjustedX >= 0 && adjustedY >= 0 &&
+                    adjustedX + boxWidth <= canvasWidth &&
                     adjustedY + boxHeight <= canvasHeight) {
-                    
+
                     // Check for overlaps with existing labels
-                    const wouldOverlap = placedLabels.some(existing => 
+                    const wouldOverlap = placedLabels.some(existing =>
                         this.rectanglesOverlap(
                             adjustedX, adjustedY, boxWidth, boxHeight,
-                            existing.x - minSeparation, existing.y - minSeparation, 
+                            existing.x - minSeparation, existing.y - minSeparation,
                             existing.width + (minSeparation * 2), existing.height + (minSeparation * 2)
                         )
                     );
-                    
+
                     if (!wouldOverlap) {
                         return {
                             boxX: adjustedX,
                             boxY: adjustedY,
                             textX: adjustedX + padding,
-                            textY: adjustedY + boxHeight/2,
+                            textY: adjustedY + boxHeight / 2,
                             boxWidth: boxWidth,
                             boxHeight: boxHeight
                         };
@@ -1351,7 +1390,7 @@ DESCRIPTION: Refined neck anatomy with precise vascular structure locations`;
                 }
             }
         }
-        
+
         // If no non-overlapping position found, try spiral placement
         return this.findSpiralPosition(pointX, pointY, boxWidth, boxHeight, padding, canvasWidth, canvasHeight, placedLabels, minSeparation);
     }
@@ -1363,29 +1402,29 @@ DESCRIPTION: Refined neck anatomy with precise vascular structure locations`;
     findSpiralPosition(centerX, centerY, boxWidth, boxHeight, padding, canvasWidth, canvasHeight, placedLabels, minSeparation) {
         const maxRadius = Math.min(canvasWidth, canvasHeight) / 2;
         const angleStep = Math.PI / 8; // 22.5 degrees
-        
+
         for (let radius = 50; radius <= maxRadius; radius += 20) {
             for (let angle = 0; angle < 2 * Math.PI; angle += angleStep) {
-                const x = centerX + radius * Math.cos(angle) - boxWidth/2;
-                const y = centerY + radius * Math.sin(angle) - boxHeight/2;
-                
+                const x = centerX + radius * Math.cos(angle) - boxWidth / 2;
+                const y = centerY + radius * Math.sin(angle) - boxHeight / 2;
+
                 // Check bounds
                 if (x >= 0 && y >= 0 && x + boxWidth <= canvasWidth && y + boxHeight <= canvasHeight) {
                     // Check overlaps
-                    const wouldOverlap = placedLabels.some(existing => 
+                    const wouldOverlap = placedLabels.some(existing =>
                         this.rectanglesOverlap(
                             x, y, boxWidth, boxHeight,
-                            existing.x - minSeparation, existing.y - minSeparation, 
+                            existing.x - minSeparation, existing.y - minSeparation,
                             existing.width + (minSeparation * 2), existing.height + (minSeparation * 2)
                         )
                     );
-                    
+
                     if (!wouldOverlap) {
                         return {
                             boxX: x,
                             boxY: y,
                             textX: x + padding,
-                            textY: y + boxHeight/2,
+                            textY: y + boxHeight / 2,
                             boxWidth: boxWidth,
                             boxHeight: boxHeight
                         };
@@ -1393,16 +1432,16 @@ DESCRIPTION: Refined neck anatomy with precise vascular structure locations`;
                 }
             }
         }
-        
+
         // Final fallback: place at a safe position even if it might overlap slightly
-        const safeX = Math.max(0, Math.min(centerX - boxWidth/2, canvasWidth - boxWidth));
-        const safeY = Math.max(0, Math.min(centerY - boxHeight/2, canvasHeight - boxHeight));
-        
+        const safeX = Math.max(0, Math.min(centerX - boxWidth / 2, canvasWidth - boxWidth));
+        const safeY = Math.max(0, Math.min(centerY - boxHeight / 2, canvasHeight - boxHeight));
+
         return {
             boxX: safeX,
             boxY: safeY,
             textX: safeX + padding,
-            textY: safeY + boxHeight/2,
+            textY: safeY + boxHeight / 2,
             boxWidth: boxWidth,
             boxHeight: boxHeight
         };
@@ -1413,49 +1452,49 @@ DESCRIPTION: Refined neck anatomy with precise vascular structure locations`;
         const boxWidth = textWidth + (padding * 2);
         const boxHeight = textHeight + (padding * 2);
         const offset = 40; // Distance from point to label
-        
+
         // Try different positions in order of preference
         const positions = [
             { x: pointX + offset, y: pointY - offset, anchor: 'top-right' },    // Top-right
             { x: pointX - offset - boxWidth, y: pointY - offset, anchor: 'top-left' },     // Top-left
             { x: pointX + offset, y: pointY + offset, anchor: 'bottom-right' }, // Bottom-right
             { x: pointX - offset - boxWidth, y: pointY + offset, anchor: 'bottom-left' },  // Bottom-left
-            { x: pointX - boxWidth/2, y: pointY - offset - boxHeight, anchor: 'top' },     // Top
-            { x: pointX - boxWidth/2, y: pointY + offset, anchor: 'bottom' }               // Bottom
+            { x: pointX - boxWidth / 2, y: pointY - offset - boxHeight, anchor: 'top' },     // Top
+            { x: pointX - boxWidth / 2, y: pointY + offset, anchor: 'bottom' }               // Bottom
         ];
-        
+
         // Offset positions slightly to avoid overlap
         const stagger = (index % 3) * 15;
-        
+
         for (let pos of positions) {
             const adjustedX = pos.x + (pos.anchor.includes('right') ? stagger : -stagger);
             const adjustedY = pos.y + stagger;
-            
+
             // Check if this position fits within canvas bounds
-            if (adjustedX >= 0 && adjustedY >= 0 && 
-                adjustedX + boxWidth <= canvasWidth && 
+            if (adjustedX >= 0 && adjustedY >= 0 &&
+                adjustedX + boxWidth <= canvasWidth &&
                 adjustedY + boxHeight <= canvasHeight) {
-                
+
                 return {
                     boxX: adjustedX,
                     boxY: adjustedY,
                     textX: adjustedX + padding,
-                    textY: adjustedY + boxHeight/2,
+                    textY: adjustedY + boxHeight / 2,
                     boxWidth: boxWidth,
                     boxHeight: boxHeight
                 };
             }
         }
-        
+
         // Fallback: force fit within bounds
-        const safeX = Math.max(0, Math.min(pointX - boxWidth/2, canvasWidth - boxWidth));
-        const safeY = Math.max(0, Math.min(pointY - boxHeight/2, canvasHeight - boxHeight));
-        
+        const safeX = Math.max(0, Math.min(pointX - boxWidth / 2, canvasWidth - boxWidth));
+        const safeY = Math.max(0, Math.min(pointY - boxHeight / 2, canvasHeight - boxHeight));
+
         return {
             boxX: safeX,
             boxY: safeY,
             textX: safeX + padding,
-            textY: safeY + boxHeight/2,
+            textY: safeY + boxHeight / 2,
             boxWidth: boxWidth,
             boxHeight: boxHeight
         };
@@ -1466,18 +1505,18 @@ DESCRIPTION: Refined neck anatomy with precise vascular structure locations`;
         const startY = pointY;
         const endX = labelPosition.boxX + (labelPosition.boxWidth / 2);
         const endY = labelPosition.boxY + (labelPosition.boxHeight / 2);
-        
+
         // Create elegant curved line
         ctx.beginPath();
         ctx.strokeStyle = config.lineColor;
         ctx.lineWidth = config.lineWidth;
         ctx.lineCap = 'round';
-        
+
         // Calculate control points for smooth curve
         const midX = (startX + endX) / 2;
         const midY = (startY + endY) / 2;
         const controlOffset = 20;
-        
+
         ctx.moveTo(startX, startY);
         ctx.quadraticCurveTo(
             midX + controlOffset, midY - controlOffset,
@@ -1493,22 +1532,22 @@ DESCRIPTION: Refined neck anatomy with precise vascular structure locations`;
         ctx.shadowBlur = 8;
         ctx.shadowOffsetX = 2;
         ctx.shadowOffsetY = 2;
-        
+
         // Draw rounded rectangle background
         ctx.beginPath();
         ctx.roundRect(
-            position.boxX, position.boxY, 
-            position.boxWidth, position.boxHeight, 
+            position.boxX, position.boxY,
+            position.boxWidth, position.boxHeight,
             config.borderRadius
         );
         ctx.fillStyle = config.backgroundColor;
         ctx.fill();
-        
+
         // Add subtle border
         ctx.strokeStyle = '#e1e8ed';
         ctx.lineWidth = 1;
         ctx.stroke();
-        
+
         ctx.restore();
     }
 
@@ -1521,7 +1560,7 @@ DESCRIPTION: Refined neck anatomy with precise vascular structure locations`;
         ctx.strokeStyle = config.lineColor;
         ctx.lineWidth = 2;
         ctx.stroke();
-        
+
         // Draw inner dot
         ctx.beginPath();
         ctx.arc(x, y, config.dotSize, 0, 2 * Math.PI);
@@ -1533,7 +1572,7 @@ DESCRIPTION: Refined neck anatomy with precise vascular structure locations`;
         if (this.currentMode === 'learn') {
             const procedure = this.selectedProcedure;
             const stepDescriptions = this.getProcedureStepDescriptions(procedure);
-            
+
             if (totalSteps <= 3 && stepDescriptions[stepIndex]) {
                 return stepDescriptions[stepIndex];
             } else {
@@ -1587,7 +1626,7 @@ DESCRIPTION: Refined neck anatomy with precise vascular structure locations`;
 
     getGenericStepDescription(stepIndex, totalSteps, type) {
         const percentage = (stepIndex / (totalSteps - 1)) * 100;
-        
+
         if (type === 'educational') {
             if (percentage < 25) return 'Pre-procedure anatomy';
             if (percentage < 50) return 'Early surgical stage';
@@ -1628,7 +1667,7 @@ DESCRIPTION: Refined neck anatomy with precise vascular structure locations`;
     displayResults(images) {
         const resultsDiv = document.getElementById('results');
         const sequenceDiv = document.getElementById('image-sequence');
-        
+
         sequenceDiv.innerHTML = '';
 
         // Pre-fetch all anatomical descriptions for better tooltip performance
@@ -1651,7 +1690,7 @@ DESCRIPTION: Refined neck anatomy with precise vascular structure locations`;
             const description = document.createElement('div');
             description.className = 'step-description';
             description.innerHTML = '<span class="description-loading">🔄 Generating detailed explanation...</span>';
-            
+
             // Generate dynamic description for this specific visualization
             this.getOrGenerateImageDescription(imageData, index, images.length)
                 .then(desc => {
@@ -1670,31 +1709,31 @@ DESCRIPTION: Refined neck anatomy with precise vascular structure locations`;
             stepDiv.appendChild(title);
             stepDiv.appendChild(img);
             stepDiv.appendChild(description);
-            
+
             // Add label information if available
             if (imageData.labels && imageData.labels.length > 0) {
                 const labelInfo = document.createElement('div');
                 labelInfo.className = 'label-info';
-                
+
                 const labelHeader = document.createElement('strong');
                 labelHeader.textContent = 'Key structures labeled:';
                 labelInfo.appendChild(labelHeader);
-                
+
                 const labelsContainer = document.createElement('div');
                 labelsContainer.style.marginTop = '8px';
-                
+
                 imageData.labels.forEach((label, index) => {
                     const termElement = document.createElement('span');
                     termElement.className = 'anatomical-term';
                     termElement.textContent = label.text;
                     termElement.dataset.structure = label.text;
                     termElement.dataset.context = this.getStructureContext(imageData);
-                    
+
                     // Add hover events for tooltip
                     this.addTooltipEvents(termElement);
-                    
+
                     labelsContainer.appendChild(termElement);
-                    
+
                     // Add comma separator except for last item
                     if (index < imageData.labels.length - 1) {
                         const separator = document.createElement('span');
@@ -1702,17 +1741,17 @@ DESCRIPTION: Refined neck anatomy with precise vascular structure locations`;
                         labelsContainer.appendChild(separator);
                     }
                 });
-                
+
                 labelInfo.appendChild(labelsContainer);
                 stepDiv.appendChild(labelInfo);
             }
-            
+
             sequenceDiv.appendChild(stepDiv);
         });
 
         resultsDiv.style.display = 'block';
         resultsDiv.scrollIntoView({ behavior: 'smooth' });
-        
+
         // Set up image click handlers for popup functionality
         setTimeout(() => {
             this.setupImageClickHandlers();
@@ -1725,7 +1764,7 @@ DESCRIPTION: Refined neck anatomy with precise vascular structure locations`;
             // Collect all unique anatomical structures from all images
             const allStructures = new Set();
             const contextInfo = [];
-            
+
             images.forEach(imageData => {
                 if (imageData.labels && imageData.labels.length > 0) {
                     const context = this.getStructureContext(imageData);
@@ -1749,7 +1788,7 @@ DESCRIPTION: Refined neck anatomy with precise vascular structure locations`;
 
             // Make a single API call for all descriptions
             const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${this.getApiKey()}`;
-            
+
             const requestBody = {
                 contents: [{
                     parts: [{ text: prompt }]
@@ -1770,18 +1809,18 @@ DESCRIPTION: Refined neck anatomy with precise vascular structure locations`;
             }
 
             const data = await response.json();
-            
+
             if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) {
                 const responseText = data.candidates[0].content.parts[0].text;
                 const parsedDescriptions = this.parseBatchAnatomicalDescriptions(responseText, structuresList);
-                
+
                 // Store in both caches for compatibility
                 structuresList.forEach(structure => {
                     const description = parsedDescriptions[structure];
                     if (description) {
                         // Store in pre-fetched cache
                         this.preFetchedDescriptions.set(structure, description);
-                        
+
                         // Store in traditional cache with context keys
                         contextInfo.filter(item => item.structure === structure).forEach(item => {
                             const cacheKey = `${item.structure}-${item.context}`;
@@ -1823,9 +1862,9 @@ FUNCTION: It ensures proper blood circulation from your brain and prevents harmf
 Please provide descriptions for these structures:
 
 ${structures.map(structure => {
-    const context = contextMap.get(structure) || 'medical anatomy';
-    return `${structure.toUpperCase().replace(/\s+/g, '_')}: (Context: ${context})`;
-}).join('\n')}
+            const context = contextMap.get(structure) || 'medical anatomy';
+            return `${structure.toUpperCase().replace(/\s+/g, '_')}: (Context: ${context})`;
+        }).join('\n')}
 
 Provide complete information for ALL structures listed above.`;
 
@@ -1834,20 +1873,20 @@ Provide complete information for ALL structures listed above.`;
 
     parseBatchAnatomicalDescriptions(responseText, structures) {
         const descriptions = {};
-        
+
         try {
             const lines = responseText.split('\n');
             let currentStructure = null;
             let currentSection = null;
-            
+
             for (const line of lines) {
                 const trimmedLine = line.trim();
-                
+
                 // Check if this line starts a new structure
-                const structureMatch = structures.find(structure => 
+                const structureMatch = structures.find(structure =>
                     trimmedLine.startsWith(structure.toUpperCase().replace(/\s+/g, '_') + ':')
                 );
-                
+
                 if (structureMatch) {
                     currentStructure = structureMatch;
                     descriptions[currentStructure] = {
@@ -1857,9 +1896,9 @@ Provide complete information for ALL structures listed above.`;
                     };
                     continue;
                 }
-                
+
                 if (!currentStructure) continue;
-                
+
                 // Check for section headers
                 if (trimmedLine.startsWith('MEDICAL:')) {
                     currentSection = 'medical';
@@ -1875,7 +1914,7 @@ Provide complete information for ALL structures listed above.`;
                     descriptions[currentStructure][currentSection] += ' ' + trimmedLine;
                 }
             }
-            
+
             // Ensure all descriptions have valid content
             structures.forEach(structure => {
                 if (descriptions[structure]) {
@@ -1890,11 +1929,11 @@ Provide complete information for ALL structures listed above.`;
                     }
                 }
             });
-            
+
         } catch (error) {
             console.warn('Error parsing batch anatomical descriptions:', error);
         }
-        
+
         return descriptions;
     }
 
@@ -1935,11 +1974,11 @@ Provide complete information for ALL structures listed above.`;
     getPersonalStepDescriptions(stepIndex, totalSteps, query) {
         // Create more specific fallback descriptions based on step and query content
         const stepPhase = ((stepIndex) / Math.max(1, totalSteps - 1)) * 100;
-        
+
         if (totalSteps === 1) {
             return `This visualization shows your current medical condition based on your uploaded images. The detailed view helps explain what you're experiencing and provides context for your treatment options.`;
         }
-        
+
         if (stepPhase <= 33) {
             return `This first visualization shows your current medical condition as it appears in your uploaded images. You can see the anatomical structures and how your specific condition affects this area of your body.`;
         } else if (stepPhase <= 66) {
@@ -1973,10 +2012,10 @@ Provide complete information for ALL structures listed above.`;
             // Generate new description using Gemini API
             console.log(`Generating ${this.currentMode} description for step ${stepIndex + 1} of ${totalSteps}`);
             const description = await this.generateImageSpecificDescription(imageData, stepIndex, totalSteps);
-            
+
             // Cache the result
             this.imageDescriptions.set(cacheKey, description);
-            
+
             console.log(`Successfully generated ${this.currentMode} description:`, description.substring(0, 100) + '...');
             return description;
         } catch (error) {
@@ -1991,7 +2030,7 @@ Provide complete information for ALL structures listed above.`;
         // Build context for the AI
         let procedureContext = '';
         let stepContext = `Step ${stepIndex + 1} of ${totalSteps}`;
-        
+
         if (this.currentMode === 'learn') {
             if (this.selectedProcedure && this.selectedProcedure !== 'custom') {
                 procedureContext = this.getPredefinedProcedurePrompt(this.selectedProcedure);
@@ -2003,14 +2042,14 @@ Provide complete information for ALL structures listed above.`;
         }
 
         // Get labeled structures for context
-        const labeledStructures = imageData.labels ? 
-            imageData.labels.map(label => label.text).join(', ') : 
+        const labeledStructures = imageData.labels ?
+            imageData.labels.map(label => label.text).join(', ') :
             'various anatomical structures';
 
         // Build more specific context based on mode
         let promptContext = '';
         let modeSpecificInstructions = '';
-        
+
         if (this.currentMode === 'learn') {
             promptContext = `Educational visualization about: ${procedureContext}`;
             modeSpecificInstructions = `
@@ -2055,16 +2094,16 @@ MEDICAL EXPLANATION FORMAT:
 - Use "called" or parentheses for clarification: "intervertebral discs (the cushions between your spine bones)"
 - Avoid intimidating language, use reassuring explanations
 
-${this.currentMode === 'learn' ? 
-    'Example formats for educational mode:\n- "This image shows your spine anatomy before the procedure begins. You can see your lumbar vertebrae (the bones in your lower back) and the intervertebral discs (soft cushions between the bones) that provide flexibility."\n- "At this stage, the surgeon is carefully placing the fusion hardware. You can see the metal screws and rods (called spinal instrumentation) that will help your bones grow together permanently."' :
-    'Example formats for personal consultation mode:\n- "This visualization shows your current condition as seen in your uploaded images. You can see how the affected area appears and what anatomical structures are involved in your specific case."\n- "This visualization demonstrates how your treatment will address the issues visible in your medical images. You can see the expected changes and improvements in your specific condition."'
-}
+${this.currentMode === 'learn' ?
+                'Example formats for educational mode:\n- "This image shows your spine anatomy before the procedure begins. You can see your lumbar vertebrae (the bones in your lower back) and the intervertebral discs (soft cushions between the bones) that provide flexibility."\n- "At this stage, the surgeon is carefully placing the fusion hardware. You can see the metal screws and rods (called spinal instrumentation) that will help your bones grow together permanently."' :
+                'Example formats for personal consultation mode:\n- "This visualization shows your current condition as seen in your uploaded images. You can see how the affected area appears and what anatomical structures are involved in your specific case."\n- "This visualization demonstrates how your treatment will address the issues visible in your medical images. You can see the expected changes and improvements in your specific condition."'
+            }
 
 Generate a specific, step-focused description in plain text for this ${stepContext.toLowerCase()} visualization of ${procedureContext}:`;
 
         try {
             const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${this.getApiKey()}`;
-            
+
             const requestBody = {
                 contents: [{
                     parts: [{ text: prompt }]
@@ -2097,10 +2136,10 @@ Generate a specific, step-focused description in plain text for this ${stepConte
             }
 
             const data = await response.json();
-            
+
             if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) {
                 let description = data.candidates[0].content.parts[0].text.trim();
-                
+
                 // Comprehensive cleanup of markdown and formatting artifacts
                 description = description.replace(/^["']|["']$/g, ''); // Remove surrounding quotes
                 description = description.replace(/\*\*(.*?)\*\*/g, '$1'); // Remove **bold** formatting
@@ -2110,14 +2149,14 @@ Generate a specific, step-focused description in plain text for this ${stepConte
                 description = description.replace(/\n+/g, ' '); // Replace newlines with spaces
                 description = description.replace(/\s+/g, ' '); // Normalize multiple spaces
                 description = description.trim();
-                
+
                 if (!description) {
                     throw new Error('Generated description is empty after cleanup');
                 }
-                
+
                 return description;
             }
-            
+
             console.error('API response structure:', JSON.stringify(data, null, 2));
             throw new Error('No valid response from API - unexpected response structure');
         } catch (error) {
@@ -2139,20 +2178,20 @@ Generate a specific, step-focused description in plain text for this ${stepConte
     }
 
     // Tooltip System Methods
-    
+
     initializeTooltip() {
         this.tooltip = document.createElement('div');
         this.tooltip.className = 'tooltip';
-        
+
         // Allow tooltip to be hovered
         this.tooltip.addEventListener('mouseenter', () => {
             // Keep tooltip visible when hovering over it
         });
-        
+
         this.tooltip.addEventListener('mouseleave', () => {
             this.hideTooltip();
         });
-        
+
         document.body.appendChild(this.tooltip);
     }
 
@@ -2170,7 +2209,7 @@ Generate a specific, step-focused description in plain text for this ${stepConte
         let hoverTimeout;
         let isHovering = false;
         let lastMouseEvent = null;
-        
+
         element.addEventListener('mouseenter', (e) => {
             isHovering = true;
             lastMouseEvent = e;
@@ -2204,24 +2243,24 @@ Generate a specific, step-focused description in plain text for this ${stepConte
     async showTooltip(element, mouseEvent = null) {
         const structure = element.dataset.structure;
         const context = element.dataset.context;
-        
+
         // Hide tooltip first to prevent jump from previous position
         this.tooltip.classList.remove('show');
-        
+
         // Reset tooltip content to prepare for new content
         this.tooltip.innerHTML = '';
-        
+
         // Position tooltip immediately based on mouse position or element position
         if (mouseEvent) {
             this.positionTooltip(mouseEvent);
         } else {
             const rect = element.getBoundingClientRect();
-            this.positionTooltip({ 
-                clientX: rect.left + rect.width / 2, 
-                clientY: rect.top 
+            this.positionTooltip({
+                clientX: rect.left + rect.width / 2,
+                clientY: rect.top
             });
         }
-        
+
         // Check pre-fetched descriptions first
         if (this.preFetchedDescriptions.has(structure)) {
             this.displayTooltipContent(structure, this.preFetchedDescriptions.get(structure));
@@ -2253,7 +2292,7 @@ Generate a specific, step-focused description in plain text for this ${stepConte
             </div>
         `;
         this.tooltip.classList.add('show');
-        
+
         // Re-position after loading content is set
         if (mouseEvent) {
             this.positionTooltip(mouseEvent);
@@ -2262,11 +2301,11 @@ Generate a specific, step-focused description in plain text for this ${stepConte
         try {
             // Generate description using Gemini API (fallback)
             const description = await this.generateAnatomicalDescription(structure, context);
-            
+
             // Cache the result
             this.anatomicalDescriptions.set(cacheKey, description);
             this.preFetchedDescriptions.set(structure, description);
-            
+
             // Display content if tooltip is still visible
             if (this.tooltip.classList.contains('show')) {
                 this.displayTooltipContent(structure, description);
@@ -2277,7 +2316,7 @@ Generate a specific, step-focused description in plain text for this ${stepConte
             }
         } catch (error) {
             console.warn('Error generating description for', structure, error);
-            
+
             // Show error state
             if (this.tooltip.classList.contains('show')) {
                 this.tooltip.innerHTML = `
@@ -2343,7 +2382,7 @@ Context: ${context}`;
 
         try {
             const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${this.getApiKey()}`;
-            
+
             const requestBody = {
                 contents: [{
                     parts: [{ text: prompt }]
@@ -2367,12 +2406,12 @@ Context: ${context}`;
             }
 
             const data = await response.json();
-            
+
             if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) {
                 const responseText = data.candidates[0].content.parts[0].text;
                 return this.parseAnatomicalDescription(responseText);
             }
-            
+
             throw new Error('No valid response from API');
         } catch (error) {
             console.error('Error generating anatomical description:', error);
@@ -2395,10 +2434,10 @@ Context: ${context}`;
             };
 
             let currentSection = '';
-            
+
             for (const line of lines) {
                 const trimmedLine = line.trim();
-                
+
                 if (trimmedLine.startsWith('MEDICAL:')) {
                     currentSection = 'medical';
                     description.medical = trimmedLine.replace('MEDICAL:', '').trim();
@@ -2444,44 +2483,44 @@ Context: ${context}`;
 
     positionTooltip(event) {
         if (!this.tooltip) return;
-        
+
         // Store mouse position for arrow calculation
         const mouseX = event.clientX;
         const mouseY = event.clientY;
-        
+
         // Get viewport dimensions
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
-        
+
         // Set initial position to measure tooltip dimensions
         this.tooltip.style.left = '0px';
         this.tooltip.style.top = '0px';
         this.tooltip.style.visibility = 'hidden';
         this.tooltip.style.display = 'block';
-        
+
         // Get tooltip dimensions after content is set
         const tooltipRect = this.tooltip.getBoundingClientRect();
-        
+
         let x = mouseX + 15;
         let y = mouseY - 10;
-        
+
         // Adjust horizontal position if tooltip would go off-screen
         if (x + tooltipRect.width > viewportWidth - 20) {
             x = mouseX - tooltipRect.width - 15;
         }
-        
+
         // Adjust vertical position if tooltip would go off-screen
         if (y + tooltipRect.height > viewportHeight - 20) {
             y = mouseY - tooltipRect.height - 10;
         }
-        
+
         // Ensure tooltip stays within viewport
         x = Math.max(10, Math.min(x, viewportWidth - tooltipRect.width - 10));
         y = Math.max(10, Math.min(y, viewportHeight - tooltipRect.height - 10));
-        
+
         // Update arrow position based on mouse position relative to tooltip
         // this.updateTooltipArrow(mouseX, x, tooltipRect.width); // Removed arrow positioning
-        
+
         // Apply final position
         this.tooltip.style.left = x + 'px';
         this.tooltip.style.top = y + 'px';
@@ -2507,12 +2546,12 @@ Context: ${context}`;
     }
 
     // Image Popup System Methods
-    
+
     initializeImagePopup() {
         // Create popup overlay
         this.imagePopup = document.createElement('div');
         this.imagePopup.className = 'image-popup-overlay';
-        
+
         this.imagePopup.innerHTML = `
             <div class="image-popup-container">
                 <button class="image-popup-close" title="Close">×</button>
@@ -2520,20 +2559,20 @@ Context: ${context}`;
                 <div class="image-popup-info"></div>
             </div>
         `;
-        
+
         document.body.appendChild(this.imagePopup);
-        
+
         // Add event listeners
         this.imagePopup.addEventListener('click', (e) => {
             if (e.target === this.imagePopup) {
                 this.closeImagePopup();
             }
         });
-        
+
         this.imagePopup.querySelector('.image-popup-close').addEventListener('click', () => {
             this.closeImagePopup();
         });
-        
+
         // ESC key to close
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && this.imagePopup.classList.contains('show')) {
@@ -2541,7 +2580,7 @@ Context: ${context}`;
             }
         });
     }
-    
+
     setupImageClickHandlers() {
         // Add click handlers to all visualization step images
         document.querySelectorAll('.visualization-step img').forEach(img => {
@@ -2552,25 +2591,25 @@ Context: ${context}`;
             });
         });
     }
-    
+
     openImagePopup(imgElement) {
         if (!this.imagePopup) return;
-        
+
         const popupImg = this.imagePopup.querySelector('img');
         const popupInfo = this.imagePopup.querySelector('.image-popup-info');
-        
+
         // Set image source
         popupImg.src = imgElement.src;
         popupImg.alt = imgElement.alt || 'Medical visualization';
-        
+
         // Find the parent visualization step for context
         const stepElement = imgElement.closest('.visualization-step');
         let infoText = '';
-        
+
         if (stepElement) {
             const title = stepElement.querySelector('h4')?.textContent || '';
             const description = stepElement.querySelector('.step-description')?.textContent || '';
-            
+
             if (title) {
                 infoText = title;
                 if (description) {
@@ -2584,24 +2623,24 @@ Context: ${context}`;
         } else {
             infoText = 'Medical Visualization - Click image to close or press ESC';
         }
-        
+
         popupInfo.textContent = infoText;
-        
+
         // Show popup
         this.imagePopup.classList.add('show');
-        
+
         // Prevent body scroll
         document.body.style.overflow = 'hidden';
     }
-    
+
     closeImagePopup() {
         if (!this.imagePopup) return;
-        
+
         this.imagePopup.classList.remove('show');
-        
+
         // Restore body scroll
         document.body.style.overflow = '';
-        
+
         // Clear image source after animation
         setTimeout(() => {
             if (!this.imagePopup.classList.contains('show')) {
